@@ -42,6 +42,7 @@ def customShadowCallback_Delta(payload, responseStatus, token):
     print("++++++++DELTA++++++++++")
     print("property: " + str(payloadDict["state"]["property"]))
     print("version: " + str(payloadDict["version"]))
+    print("value: " + str(payloadDict["value"]))
     print("+++++++++++++++++++++++\n\n")
 
 
