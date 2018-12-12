@@ -39,6 +39,7 @@ def customShadowCallback_Delta(payload, responseStatus, token):
     # in both Py2.x and Py3.x
     print(responseStatus)
     payloadDict = json.loads(payload)
+    print(payload)
     print("++++++++DELTA++++++++++")
     print("property: " + str(payloadDict["state"]["property"]))
     print("version: " + str(payloadDict["version"]))
