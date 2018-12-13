@@ -15,35 +15,35 @@
  */
  '''
 
-from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTShadowClient
+from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
 import logging
 import time
-import json
 import argparse
 
 
-# Shadow JSON schema:
-#
-# Name: Bot
-# {
-#	"state": {
-#		"desired":{
-#			"property":<INT VALUE>
-#		}
-#	}
-# }
+# General message notification callback
+def customOnMessage(message):
+    print("Received a new message: ")
+    print(message.payload)
+    print("from topic: ")
+    print(message.topic)
+    print("--------------\n\n")
 
-# Custom Shadow callback
-def customShadowCallback_Delta(payload, responseStatus, token):
-    # payload is a JSON string ready to be parsed using json.loads(...)
-    # in both Py2.x and Py3.x
-    print(responseStatus)
-    payloadDict = json.loads(payload)
-    print(payload)
-    print("++++++++DELTA++++++++++")
-    #print("property: " + str(payloadDict["state"]["property"]))
-    #print("version: " + str(payloadDict["version"]))
-    print("+++++++++++++++++++++++\n\n")
+
+# Suback callback
+def customSubackCallback(mid, data):
+    print("Received SUBACK packet id: ")
+    print(mid)
+    print("Granted QoS: ")
+    print(data)
+    print("++++++++++++++\n\n")
+
+
+# Puback callback
+def customPubackCallback(mid):
+    print("Received PUBACK packet id: ")
+    print(mid)
+    print("++++++++++++++\n\n")
 
 
 # Read in command-line parameters
@@ -55,9 +55,9 @@ parser.add_argument("-k", "--key", action="store", dest="privateKeyPath", help="
 parser.add_argument("-p", "--port", action="store", dest="port", type=int, help="Port number override")
 parser.add_argument("-w", "--websocket", action="store_true", dest="useWebsocket", default=False,
                     help="Use MQTT over WebSocket")
-parser.add_argument("-n", "--thingName", action="store", dest="thingName", default="Bot", help="Targeted thing name")
-parser.add_argument("-id", "--clientId", action="store", dest="clientId", default="basicShadowDeltaListener",
+parser.add_argument("-id", "--clientId", action="store", dest="clientId", default="basicPubSub",
                     help="Targeted client id")
+parser.add_argument("-t", "--topic", action="store", dest="topic", default="sdk/test/Python", help="Targeted topic")
 
 args = parser.parse_args()
 host = args.host
@@ -66,8 +66,8 @@ certificatePath = args.certificatePath
 privateKeyPath = args.privateKeyPath
 port = args.port
 useWebsocket = args.useWebsocket
-thingName = args.thingName
 clientId = args.clientId
+topic = args.topic
 
 if args.useWebsocket and args.certificatePath and args.privateKeyPath:
     parser.error("X.509 cert authentication and WebSocket are mutual exclusive. Please pick one.")
@@ -91,31 +91,34 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 streamHandler.setFormatter(formatter)
 logger.addHandler(streamHandler)
 
-# Init AWSIoTMQTTShadowClient
-myAWSIoTMQTTShadowClient = None
+# Init AWSIoTMQTTClient
+myAWSIoTMQTTClient = None
 if useWebsocket:
-    myAWSIoTMQTTShadowClient = AWSIoTMQTTShadowClient(clientId, useWebsocket=True)
-    myAWSIoTMQTTShadowClient.configureEndpoint(host, port)
-    myAWSIoTMQTTShadowClient.configureCredentials(rootCAPath)
+    myAWSIoTMQTTClient = AWSIoTMQTTClient(clientId, useWebsocket=True)
+    myAWSIoTMQTTClient.configureEndpoint(host, port)
+    myAWSIoTMQTTClient.configureCredentials(rootCAPath)
 else:
-    myAWSIoTMQTTShadowClient = AWSIoTMQTTShadowClient(clientId)
-    myAWSIoTMQTTShadowClient.configureEndpoint(host, port)
-    myAWSIoTMQTTShadowClient.configureCredentials(rootCAPath, privateKeyPath, certificatePath)
+    myAWSIoTMQTTClient = AWSIoTMQTTClient(clientId)
+    myAWSIoTMQTTClient.configureEndpoint(host, port)
+    myAWSIoTMQTTClient.configureCredentials(rootCAPath, privateKeyPath, certificatePath)
 
-# AWSIoTMQTTShadowClient configuration
-myAWSIoTMQTTShadowClient.configureAutoReconnectBackoffTime(1, 32, 20)
-myAWSIoTMQTTShadowClient.configureConnectDisconnectTimeout(10)  # 10 sec
-myAWSIoTMQTTShadowClient.configureMQTTOperationTimeout(5)  # 5 sec
+# AWSIoTMQTTClient connection configuration
+myAWSIoTMQTTClient.configureAutoReconnectBackoffTime(1, 32, 20)
+myAWSIoTMQTTClient.configureOfflinePublishQueueing(-1)  # Infinite offline Publish queueing
+myAWSIoTMQTTClient.configureDrainingFrequency(2)  # Draining: 2 Hz
+myAWSIoTMQTTClient.configureConnectDisconnectTimeout(10)  # 10 sec
+myAWSIoTMQTTClient.configureMQTTOperationTimeout(5)  # 5 sec
+myAWSIoTMQTTClient.onMessage = customOnMessage
 
-# Connect to AWS IoT
-myAWSIoTMQTTShadowClient.connect()
+# Connect and subscribe to AWS IoT
+myAWSIoTMQTTClient.connect()
+# Note that we are not putting a message callback here. We are using the general message notification callback.
+myAWSIoTMQTTClient.subscribeAsync(topic, 1, ackCallback=customSubackCallback)
+time.sleep(2)
 
-# Create a deviceShadow with persistent subscription
-deviceShadowHandler = myAWSIoTMQTTShadowClient.createShadowHandlerWithName(thingName, True)
-
-# Listen on deltas
-deviceShadowHandler.shadowRegisterDeltaCallback(customShadowCallback_Delta)
-
-# Loop forever
+# Publish to the same topic in a loop forever
+loopCount = 0
 while True:
+    myAWSIoTMQTTClient.publishAsync(topic, "New Message " + str(loopCount), 1, ackCallback=customPubackCallback)
+    loopCount += 1
     time.sleep(1)
