@@ -19,6 +19,10 @@ from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
 import logging
 import time
 import argparse
+import json
+
+import base64
+
 
 
 # General message notification callback
@@ -57,7 +61,7 @@ parser.add_argument("-w", "--websocket", action="store_true", dest="useWebsocket
                     help="Use MQTT over WebSocket")
 parser.add_argument("-id", "--clientId", action="store", dest="clientId", default="basicPubSub",
                     help="Targeted client id")
-parser.add_argument("-t", "--topic", action="store", dest="topic", default="sdk/test/Python", help="Targeted topic")
+parser.add_argument("-t", "--topic", action="store", dest="topic", default="auto/platedata", help="Targeted topic")
 
 args = parser.parse_args()
 host = args.host
@@ -118,7 +122,14 @@ time.sleep(2)
 
 # Publish to the same topic in a loop forever
 loopCount = 0
-while True:
-    myAWSIoTMQTTClient.publishAsync(topic, "New Message " + str(loopCount), 1, ackCallback=customPubackCallback)
-    loopCount += 1
-    time.sleep(1)
+
+print topic
+
+with open("test.jpeg", "rb") as imageFile:
+    str = base64.b64encode(imageFile.read())
+    data = {}
+    data['plateImage'] = str
+    data['plateId'] = "gantry1.datestamp"
+    json_data = json.dumps(data)
+    myAWSIoTMQTTClient.publishAsync(topic, json_data, 1, ackCallback=customPubackCallback)
+time.sleep(2)
