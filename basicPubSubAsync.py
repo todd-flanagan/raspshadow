@@ -132,4 +132,9 @@ with open("test.jpeg", "rb") as imageFile:
     data['plateId'] = "gantry1.datestamp"
     json_data = json.dumps(data)
     myAWSIoTMQTTClient.publishAsync(topic, json_data, 1, ackCallback=customPubackCallback)
+    with open("testout.jpeg", "wb") as imageOut:
+        data = base64.b64decode(str)
+        imageOut.write(data)
+
+
 time.sleep(2)
